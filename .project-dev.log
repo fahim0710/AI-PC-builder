@@ -1,0 +1,73 @@
+
+> nexrig-ai-pc-builder@0.1.0 dev
+> concurrently -n web,api -c cyan,green "npm:dev:web" "npm:dev:api"
+
+[web] 
+[web] > nexrig-ai-pc-builder@0.1.0 dev:web
+[web] > vite
+[web] 
+[api] 
+[api] > nexrig-ai-pc-builder@0.1.0 dev:api
+[api] > tsx watch server/index.ts
+[api] 
+[web] [2m4:49:34 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m Re-optimizing dependencies because lockfile has changed
+[web] 
+[web]   [32m[1mVITE[22m v8.1.5[39m  [2mready in [0m[1m2973[22m[2m[0m ms[22m
+[web] 
+[web]   [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5173[22m/[39m
+[web] [2m4:49:35 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] scanning dependencies...
+[web] [2m4:50:13 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [optimizer] bundling dependencies...
+[web] [2m4:51:22 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/auth/me[39m
+[web] Error: connect ECONNREFUSED 127.0.0.1:4001
+[web]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+[web] [2m4:51:32 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/conversations[39m
+[web] Error: connect ECONNREFUSED 127.0.0.1:4001
+[web]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+[web] [2m4:51:32 AM[22m [31m[1m[vite][22m[39m [31mhttp proxy error: /api/ai/conversations[39m
+[web] Error: connect ECONNREFUSED 127.0.0.1:4001
+[web]     at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1637:16)
+[api] NexRig API listening at http://127.0.0.1:4001
+[web] [2m4:52:21 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:23 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:23 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:27 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:28 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:28 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:29 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:30 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:30 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:30 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:30 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:31 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:33 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:33 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `4`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:35 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:35 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `4`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:35 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `2`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[web] [2m4:52:35 AM[22m [31m[1m[vite][22m[39m [31m[2m(client)[22m[39m [2m[console.error] [22mEncountered two children with the same key, `4`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+[api] 4:55:38 AM [tsx] change in ./server\ai\retrieval.ts Restarting...
+[api] 4:55:47 AM [tsx] change in ./server\ai\huggingface.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[web] [2m4:55:57 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/AiChat.tsx[22m
+[api] 4:56:46 AM [tsx] change in ./server\ai\graph.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[api] 5:01:54 AM [tsx] change in ./server\index.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[web] [2m5:02:42 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/AiChat.tsx[22m
+[web] [2m5:02:47 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/page.tsx[22m
+[web] [2m5:03:28 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/AiChat.tsx[22m
+[web] [2m5:03:34 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/globals.css[22m
+[api] 5:09:16 AM [tsx] change in ./server\ai\huggingface.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[api] 5:09:34 AM [tsx] change in ./server\ai\retrieval.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[api] 5:09:51 AM [tsx] change in ./server\ai\graph.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[api] 5:12:53 AM [tsx] change in ./server\ai\retrieval.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[api] 5:19:37 AM [tsx] change in ./server\ai\graph.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[api] 5:21:44 AM [tsx] change in ./server\ai\retrieval.ts Restarting...
+[api] NexRig API listening at http://127.0.0.1:4001
+[web] [2m5:21:54 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/AiChat.tsx[22m
+[web] [2m5:22:14 AM[22m [36m[1m[vite][22m[39m [90m[2m(client)[22m[39m [32mhmr update [39m[2m/app/globals.css[22m

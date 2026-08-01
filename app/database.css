@@ -1,0 +1,9 @@
+.picker-message {
+  padding: 30px 0;
+  color: var(--muted);
+  border-top: 1px solid var(--line);
+}
+
+.picker-message.error {
+  color: #a7372f;
+}

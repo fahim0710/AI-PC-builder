@@ -1,0 +1,63 @@
+
+> nexrig-ai-pc-builder@0.1.0 dev:api
+> tsx watch server/index.ts
+
+NexRig API listening at http://127.0.0.1:4000
+2:55:19 AM [tsx] change in ./server\index.ts Restarting...
+NexRig API listening at http://127.0.0.1:4000
+3:09:28 AM [tsx] change in ./server\auth.ts Rerunning...
+NexRig API listening at http://127.0.0.1:4000
+3:09:52 AM [tsx] change in ./server\auth.ts Rerunning...
+NexRig API listening at http://127.0.0.1:4000
+Firebase token verification failed FirebaseAuthError: Error while making request: . Error code: EACCES
+    at FirebaseTokenVerifier.mapJwtErrorToAuthError (C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:283:16)
+    at C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:255:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async requireAuth (C:\Users\user\Ai PC builder\server\auth.ts:20:21) {
+  code: 'auth/argument-error',
+  codePrefix: 'auth'
+}
+Firebase token verification failed FirebaseAuthError: Error while making request: . Error code: EACCES
+    at FirebaseTokenVerifier.mapJwtErrorToAuthError (C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:283:16)
+    at C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:255:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async requireAuth (C:\Users\user\Ai PC builder\server\auth.ts:20:21) {
+  code: 'auth/argument-error',
+  codePrefix: 'auth'
+}
+3:45:19 AM [tsx] change in ./server\auth.ts Restarting...
+NexRig API listening at http://127.0.0.1:4000
+3:45:51 AM [tsx] change in ./server\index.ts Restarting...
+NexRig API listening at http://127.0.0.1:4000
+Firebase token verification failed FirebaseAuthError: Error while making request: . Error code: EACCES
+    at FirebaseTokenVerifier.mapJwtErrorToAuthError (C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:283:16)
+    at C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:255:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async requireAuth (C:\Users\user\Ai PC builder\server\auth.ts:20:21) {
+  code: 'auth/argument-error',
+  codePrefix: 'auth'
+}
+Firebase token verification failed FirebaseAuthError: Error while making request: . Error code: EACCES
+    at FirebaseTokenVerifier.mapJwtErrorToAuthError (C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:283:16)
+    at C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:255:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async requireAuth (C:\Users\user\Ai PC builder\server\auth.ts:20:21) {
+  code: 'auth/argument-error',
+  codePrefix: 'auth'
+}
+Firebase token verification failed FirebaseAuthError: Error while making request: . Error code: EACCES
+    at FirebaseTokenVerifier.mapJwtErrorToAuthError (C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:283:16)
+    at C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:255:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async requireAuth (C:\Users\user\Ai PC builder\server\auth.ts:20:21) {
+  code: 'auth/argument-error',
+  codePrefix: 'auth'
+}
+Firebase token verification failed FirebaseAuthError: Error while making request: . Error code: EACCES
+    at FirebaseTokenVerifier.mapJwtErrorToAuthError (C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:283:16)
+    at C:\Users\user\Ai PC builder\node_modules\firebase-admin\lib\auth\token-verifier.js:255:24
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async requireAuth (C:\Users\user\Ai PC builder\server\auth.ts:20:21) {
+  code: 'auth/argument-error',
+  codePrefix: 'auth'
+}

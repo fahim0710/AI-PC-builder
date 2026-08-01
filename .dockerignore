@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.env
+.npm-cache
+.pnpm-store
+.venv
+.scraper-profile
+scraped_data
+*.log
