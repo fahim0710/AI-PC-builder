@@ -12,9 +12,19 @@ const isLocalDatabaseUrl = (value: string | undefined) => {
 // A manually uploaded local .env can accidentally override the Neon variables
 // injected by Vercel. Never try to connect a serverless function to its own
 // localhost; prefer the integration-provided pooled URL in that situation.
+// Vercel Marketplace integrations can use a custom prefix. This project was
+// connected with the prefix `STORAGE`, which exposes STORAGE_URL. Accept both
+// that name and the standard Neon/Vercel names so preview and production
+// deployments use the same database without copying secrets into the repo.
+const hostedDatabaseUrl = process.env.POSTGRES_URL
+  ?? process.env.STORAGE_URL
+  ?? process.env.DATABASE_URL_UNPOOLED
+  ?? process.env.POSTGRES_PRISMA_URL
+  ?? process.env.STORAGE_URL_UNPOOLED;
+
 const databaseUrl = process.env.VERCEL && isLocalDatabaseUrl(process.env.DATABASE_URL)
-  ? process.env.POSTGRES_URL ?? process.env.DATABASE_URL_UNPOOLED
-  : process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? process.env.DATABASE_URL_UNPOOLED;
+  ? hostedDatabaseUrl
+  : process.env.DATABASE_URL ?? hostedDatabaseUrl;
 
 if (!databaseUrl) {
   throw new Error("DATABASE_URL is required. Copy .env.example to .env.");
