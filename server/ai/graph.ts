@@ -66,7 +66,10 @@ const classify = (context: string): IntentValue["requestType"] => {
 async function analyze(state: typeof AiState.State) {
   const previousGoal = [...state.history].reverse().find((message) => message.role === "user" && /\b(build|suggest|recommend|price|cost|processor|cpu|gpu|ram|ssd)\b/i.test(message.content))?.content;
   const isFollowUp = /^\s*(?:\d[\d,.]*\s*(?:tk|taka|bdt)?\s*(?:then|instead|please|pls)?|yes|no)\s*[?.!]*$/i.test(state.question) || /\b(change|replace|swap|switch|instead|same budget|modify|revise|make it|what about)\b/i.test(state.question);
-  const context = previousGoal && isFollowUp ? `${previousGoal}. Follow-up request: ${state.question}` : state.question;
+  const revisedBudget = parseBudget(state.question);
+  const context = previousGoal && isFollowUp
+    ? `${previousGoal}. ${revisedBudget ? `The updated maximum budget is BDT ${revisedBudget}; it replaces any earlier budget.` : `Follow-up request: ${state.question}`}`
+    : state.question;
   const fallback: IntentValue = { requestType: classify(context), goal: context, budget: parseBudget(state.question) ?? parseBudget(context), resolution: null, targetFps: null, searchQuery: `${context} system requirements recommended specifications` };
   if (fallback.requestType !== "general") return { intent: fallback };
   try {
@@ -93,7 +96,7 @@ async function generate(state: typeof AiState.State) {
   if (state.intent?.requestType === "product_question") {
     if (!state.products.length) return { draft: { answer: "I could not find matching active products in the catalog. Try a brand/model name or fewer filters.", productIds: [], assumptions: [] } };
     try {
-      const messages = [{ role: "system" as const, content: "You are Nexa, a helpful PC-component adviser. Answer naturally and concisely using only DATABASE PRODUCTS. Never invent or alter a product, price, category, specification, relative-performance statement or availability claim. A stated budget is a maximum price, not an exact target price. For a follow-up, answer the RESOLVED REQUEST rather than interpreting the short CURRENT MESSAGE in isolation. Present up to three matches with their exact database prices. Explain only that they match the requested category and budget; do not infer which model is faster, newer or better unless that fact is explicitly supplied." }, { role: "user" as const, content: `RESOLVED REQUEST: ${state.intent.goal}\nCURRENT MESSAGE: ${state.question}\nMAXIMUM COMPONENT BUDGET: ${state.intent.budget ? `৳${state.intent.budget}` : "not specified"}\nDATABASE PRODUCTS: ${JSON.stringify(state.products.slice(0, 5).map(({ id, name, category, price }) => ({ id, name, category, price })))}` }];
+      const messages = [{ role: "system" as const, content: "You are Nexa, a helpful PC-component adviser. Answer naturally in at most 120 words using only DATABASE PRODUCTS. Never invent or alter a product, price, category, specification, relative-performance statement or availability claim. Prices are Bangladeshi taka (BDT); always render them with ৳, never $. AUTHORITATIVE MAXIMUM BUDGET overrides every older budget in conversation history and means at-or-below, not an exact target. Present up to three matches with exact database prices. Explain only that they match the category and budget; do not infer which is faster, newer or better." }, { role: "user" as const, content: `RESOLVED REQUEST: ${state.intent.goal}\nCURRENT MESSAGE: ${state.question}\nAUTHORITATIVE MAXIMUM BUDGET: ${state.intent.budget ? `৳${state.intent.budget}` : "not specified"}\nDATABASE PRODUCTS: ${JSON.stringify(state.products.slice(0, 5).map(({ id, name, category, price }) => ({ id, name, category, priceBdt: `৳${price.toLocaleString("en-BD")}` })))}` }];
       if (!structuredJsonSupported) return { draft: { answer: await chat(messages), productIds: state.products.slice(0, 5).map((product) => product.id), assumptions: [] } };
       const output = await chatJson(messages, "catalog_answer", buildJsonSchema);
       return { draft: parseModelBuild(output) };
@@ -204,7 +207,7 @@ async function validate(state: typeof AiState.State) {
   const build = selected.map((product) => ({ ...product, reason: `Selected from the live ${product.category} catalog for this budget.` }));
   const warnings = [
     ...(state.manual.length ? [] : ["No PC-build manual has been ingested yet; manual-based compatibility retrieval was unavailable."]),
-    ...(state.web.length ? [] : ["Live web context was unavailable; verify the game's current official requirements."]),
+    ...(state.web.length ? [] : [gamingWorkload ? "Live web context was unavailable; verify the game's current official requirements." : "Live workload context was unavailable; verify the software's current official requirements."]),
     ...(!memoryGeneration ? ["The motherboard memory generation could not be determined from catalog text."] : []),
     ...(!platformCompatible ? ["No motherboard candidate matching the selected CPU platform/socket was available; the build was withheld."] : []),
     ...(targetRam && (!ram || ramCapacity(ram.name) < targetRam) ? [`No suitable ${targetRam} GB memory product was available inside the retrieved budget range.`] : []),
@@ -216,11 +219,15 @@ async function validate(state: typeof AiState.State) {
     try {
       const exactProducts = selected.map(({ name, category, price }) => ({ category, name, price }));
       answer = await chat([
-        { role: "system", content: `You are Nexa, a helpful PC-building expert. Write a natural, concise answer using ONLY the exact validated products and prices supplied below. Do not mention or compare against any hardware model outside that list. Do not change names, prices, total, workload or budget. Do not write a total because the application adds the validated total. Use Markdown headings "## Recommendation", "## Why this works", and "## Trade-offs". The product cards appear below your message, so summarize the balance instead of repeating a separate invented build.` },
+        { role: "system", content: `You are Nexa, a helpful PC-building expert. Write a natural answer of at most 150 words using ONLY the exact validated products supplied below. Do not mention or compare against hardware outside that list. Do not change names, workload or budget. Never write a total; the application adds it. Use Markdown headings "## Recommendation", "## Why this works", and "## Trade-offs". Product cards appear below, so discuss the build's balance without repeating the full component list.` },
         ...state.history.slice(-4).map((message) => ({ ...message, content: message.content.slice(0, 600) })),
         { role: "user", content: `CURRENT REQUEST: ${state.question}\nINTERPRETED GOAL: ${state.intent?.goal}\nBUDGET: ৳${budget}\nEXACT DATABASE PRODUCTS: ${JSON.stringify(exactProducts)}` },
       ]);
-      const cleanedAnswer = answer.replace(/^.*\btotal\b.*৳\s*\.?\s*$/gim, "").replace(/\n{3,}/g, "\n\n").trim();
+      let cleanedAnswer = answer.replace(/^.*\btotal\b.*(?:৳|BDT|taka).*$/gim, "").replace(/\n{3,}/g, "\n\n").trim();
+      if (!/[.!?]$/.test(cleanedAnswer)) {
+        const finalSentence = Math.max(cleanedAnswer.lastIndexOf("."), cleanedAnswer.lastIndexOf("!"), cleanedAnswer.lastIndexOf("?"));
+        if (finalSentence > cleanedAnswer.length * 0.55) cleanedAnswer = cleanedAnswer.slice(0, finalSentence + 1);
+      }
       answer = `${cleanedAnswer}\n\n**Validated catalog total:** ৳${total.toLocaleString("en-BD")}.`;
     } catch (error) {
       console.error("Hugging Face grounded explanation failed", error);

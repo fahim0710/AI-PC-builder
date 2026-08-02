@@ -13,6 +13,12 @@ const capacity = (name: string) => Number(name.match(/\b(8|16|32|48|64|96|128)\s
 const completeBuild = (result: AiResult) => required.filter((category) => !result.build.some((item) => item.category.toLowerCase() === category)).map((category) => `missing ${category}`);
 const grounded = (result: AiResult) => result.build.filter((item) => !/^\d+$/.test(item.id)).map((item) => `invalid product id ${item.id}`);
 const withinBudget = (result: AiResult) => result.budget && result.total > result.budget ? [`total ${result.total} exceeds ${result.budget}`] : [];
+const currencyIssues = (result: AiResult) => /\$\s*\d/.test(result.answer) ? ["used dollar currency for BDT catalog prices"] : [];
+const conflictingTotal = (result: AiResult) => {
+  if (!result.total) return [];
+  const totalLines = result.answer.split("\n").filter((line) => /\btotal\b/i.test(line) && /৳|BDT|taka/i.test(line));
+  return totalLines.length === 1 && totalLines[0].includes(result.total.toLocaleString("en-BD")) ? [] : [`found conflicting or missing validated total lines: ${totalLines.join(" | ")}`];
+};
 const performanceIssues = (result: AiResult, minimumRam: number) => {
   const ram = result.build.find((item) => item.category.toLowerCase() === "ram");
   const gpu = result.build.find((item) => item.category.toLowerCase() === "graphics card");
@@ -24,7 +30,7 @@ const cases: Case[] = [
   {
     name: "Gaming build / k budget",
     question: "Build me a GTA V PC under 100k BDT for 1080p 60 FPS",
-    check: (result) => [...completeBuild(result), ...grounded(result), ...withinBudget(result), ...performanceIssues(result, 16), ...(result.budget === 100_000 ? [] : [`budget parsed as ${result.budget}`])],
+    check: (result) => [...completeBuild(result), ...grounded(result), ...withinBudget(result), ...performanceIssues(result, 16), ...conflictingTotal(result), ...(result.budget === 100_000 ? [] : [`budget parsed as ${result.budget}`])],
   },
   {
     name: "Video editing workload",
@@ -59,7 +65,7 @@ const cases: Case[] = [
   {
     name: "Catalog product lookup",
     question: "Show me available Ryzen processors",
-    check: (result) => [...(!result.build.length ? ["no catalog matches"] : []), ...result.build.filter((item) => !/ryzen|amd/i.test(item.name)).map((item) => `irrelevant match: ${item.name}`), ...grounded(result)],
+    check: (result) => [...(!result.build.length ? ["no catalog matches"] : []), ...result.build.filter((item) => !/ryzen|amd/i.test(item.name)).map((item) => `irrelevant match: ${item.name}`), ...grounded(result), ...currencyIssues(result)],
   },
   {
     name: "Budgeted graphics-card lookup",
@@ -73,7 +79,7 @@ const cases: Case[] = [
       { role: "user", content: "Suggest me graphics card under 20000 taka" },
       { role: "assistant", content: "I could not find a graphics card in that range." },
     ],
-    check: (result) => [...(!result.build.length ? ["no graphics-card matches"] : []), ...result.build.filter((item) => item.category.toLowerCase() !== "graphics card").map((item) => `lost product intent: ${item.category}`), ...result.build.filter((item) => item.price > 100_000).map((item) => `over revised budget: ${item.name}`)],
+    check: (result) => [...(!result.build.length ? ["no graphics-card matches"] : []), ...result.build.filter((item) => item.category.toLowerCase() !== "graphics card").map((item) => `lost product intent: ${item.category}`), ...result.build.filter((item) => item.price > 100_000).map((item) => `over revised budget: ${item.name}`), ...(/20[,.]?000/.test(result.answer) ? ["answer repeated the obsolete 20,000 budget"] : []), ...currencyIssues(result)],
   },
   {
     name: "Impossible low budget",

@@ -73,11 +73,17 @@ export async function retrieveProducts(budget: number): Promise<ProductCandidate
      ) SELECT * FROM ranked WHERE rank <= 4 OR "cheapRank" <= 2 ORDER BY category, price DESC`,
     [budget],
   );
-  return result.rows as ProductCandidate[];
+  const seen = new Set<string>();
+  return (result.rows as ProductCandidate[]).filter((product) => {
+    const key = product.name.toLowerCase().replace(/\s+/g, " ").trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function searchCatalog(query: string, limit = 12, maximumPrice?: number | null): Promise<ProductCandidate[]> {
-  const stopWords = new Set(["what", "price", "cost", "of", "a", "an", "the", "show", "suggest", "recommend", "me", "find", "available", "availability", "product", "products", "processor", "processors", "component", "components", "under", "within", "budget", "taka", "bdt", "tk", "follow", "up", "request", "then", "instead", "please", "pls"]);
+  const stopWords = new Set(["what", "price", "cost", "of", "a", "an", "the", "show", "suggest", "recommend", "me", "find", "available", "availability", "product", "products", "processor", "processors", "component", "components", "under", "within", "budget", "maximum", "updated", "replaces", "replace", "earlier", "previous", "any", "it", "taka", "bdt", "tk", "follow", "up", "request", "then", "instead", "please", "pls"]);
   const terms = query.toLowerCase().split(/\W+/).filter((term) => term.length > 1 && !/^\d+$/.test(term) && !stopWords.has(term)).slice(0, 6);
   const values: unknown[] = [];
   const filters = terms.map((term) => { values.push(`%${term}%`); return `(p.name ILIKE $${values.length} OR p.description ILIKE $${values.length} OR p.specifications::text ILIKE $${values.length})`; });
@@ -93,7 +99,13 @@ export async function searchCatalog(query: string, limit = 12, maximumPrice?: nu
      ORDER BY p.price_bdt ${maximumPrice ? "DESC" : "ASC"} LIMIT $${values.length}`,
     values,
   );
-  return result.rows as ProductCandidate[];
+  const seen = new Set<string>();
+  return (result.rows as ProductCandidate[]).filter((product) => {
+    const key = product.name.toLowerCase().replace(/\s+/g, " ").trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function searchWeb(query: string) {
