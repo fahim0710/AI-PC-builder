@@ -57,14 +57,15 @@ const parseBudget = (question: string) => {
 
 const classify = (context: string): IntentValue["requestType"] => {
   if (/\b(change|replace|swap|switch|instead|same budget|modify|revise)\b/i.test(context)) return "build";
-  if (/\b(build|suggest|recommend|gaming pc|editing pc|workstation)\b/i.test(context)) return "build";
   if (/\b(price|cost|how much|find|show|processor|cpu|gpu|graphics card|ram|ssd|motherboard|power supply)\b/i.test(context)) return "product_question";
+  if (/\b(build|gaming pc|editing pc|workstation|complete pc|full pc)\b/i.test(context)) return "build";
+  if (/\b(suggest|recommend)\b/i.test(context) && /\b(pc|computer|workstation|build)\b/i.test(context)) return "build";
   return "general";
 };
 
 async function analyze(state: typeof AiState.State) {
   const previousGoal = [...state.history].reverse().find((message) => message.role === "user" && /\b(build|suggest|recommend|price|cost|processor|cpu|gpu|ram|ssd)\b/i.test(message.content))?.content;
-  const isFollowUp = /^\s*(?:\d[\d,.]*\s*(?:tk|taka|bdt)?|yes|no)\s*$/i.test(state.question) || /\b(change|replace|swap|switch|instead|same budget|modify|revise|make it|what about)\b/i.test(state.question);
+  const isFollowUp = /^\s*(?:\d[\d,.]*\s*(?:tk|taka|bdt)?\s*(?:then|instead|please|pls)?|yes|no)\s*[?.!]*$/i.test(state.question) || /\b(change|replace|swap|switch|instead|same budget|modify|revise|make it|what about)\b/i.test(state.question);
   const context = previousGoal && isFollowUp ? `${previousGoal}. Follow-up request: ${state.question}` : state.question;
   const fallback: IntentValue = { requestType: classify(context), goal: context, budget: parseBudget(state.question) ?? parseBudget(context), resolution: null, targetFps: null, searchQuery: `${context} system requirements recommended specifications` };
   if (fallback.requestType !== "general") return { intent: fallback };
@@ -80,10 +81,10 @@ const webResearcher = RunnableLambda.from((query: string) => searchWeb(query));
 const productRetriever = RunnableLambda.from((budget: number) => retrieveProducts(budget));
 const catalogSearcher = RunnableLambda.from((query: string) => searchCatalog(query));
 
-async function manualNode(state: typeof AiState.State) { return { manual: await manualRetriever.invoke(state.question) }; }
-async function webNode(state: typeof AiState.State) { return { web: await webResearcher.invoke(state.intent!.searchQuery) }; }
+async function manualNode(state: typeof AiState.State) { return { manual: state.intent?.requestType === "product_question" ? [] : await manualRetriever.invoke(state.question) }; }
+async function webNode(state: typeof AiState.State) { return { web: state.intent?.requestType === "product_question" ? [] : await webResearcher.invoke(state.intent!.searchQuery) }; }
 async function productsNode(state: typeof AiState.State) {
-  if (state.intent?.requestType === "product_question") return { products: await catalogSearcher.invoke(state.intent.goal) };
+  if (state.intent?.requestType === "product_question") return { products: await searchCatalog(state.intent.goal, 12, state.intent.budget) };
   return { products: state.intent?.budget ? await productRetriever.invoke(state.intent.budget) : [] };
 }
 
@@ -92,43 +93,27 @@ async function generate(state: typeof AiState.State) {
   if (state.intent?.requestType === "product_question") {
     if (!state.products.length) return { draft: { answer: "I could not find matching active products in the catalog. Try a brand/model name or fewer filters.", productIds: [], assumptions: [] } };
     try {
-      const messages = [{ role: "system" as const, content: "Answer the catalog question concisely using only DATABASE PRODUCTS. Never invent or alter product facts." }, { role: "user" as const, content: `QUESTION: ${state.question}\nDATABASE PRODUCTS: ${JSON.stringify(state.products.slice(0, 8).map(({ id, name, category, price }) => ({ id, name, category, price })))}` }];
-      if (!structuredJsonSupported) return { draft: { answer: await chat(messages), productIds: state.products.slice(0, 8).map((product) => product.id), assumptions: [] } };
+      const messages = [{ role: "system" as const, content: "You are Nexa, a helpful PC-component adviser. Answer naturally and concisely using only DATABASE PRODUCTS. Never invent or alter a product, price, category, specification, relative-performance statement or availability claim. A stated budget is a maximum price, not an exact target price. For a follow-up, answer the RESOLVED REQUEST rather than interpreting the short CURRENT MESSAGE in isolation. Present up to three matches with their exact database prices. Explain only that they match the requested category and budget; do not infer which model is faster, newer or better unless that fact is explicitly supplied." }, { role: "user" as const, content: `RESOLVED REQUEST: ${state.intent.goal}\nCURRENT MESSAGE: ${state.question}\nMAXIMUM COMPONENT BUDGET: ${state.intent.budget ? `৳${state.intent.budget}` : "not specified"}\nDATABASE PRODUCTS: ${JSON.stringify(state.products.slice(0, 5).map(({ id, name, category, price }) => ({ id, name, category, price })))}` }];
+      if (!structuredJsonSupported) return { draft: { answer: await chat(messages), productIds: state.products.slice(0, 5).map((product) => product.id), assumptions: [] } };
       const output = await chatJson(messages, "catalog_answer", buildJsonSchema);
       return { draft: parseModelBuild(output) };
     } catch { return { draft: { answer: "Server busy now! Try again later.", productIds: [], assumptions: ["AI_UNAVAILABLE"] } }; }
   }
   if (!state.intent?.budget) return { draft: { answer: "Tell me whether you want a full build, a product search, or compatibility guidance.", productIds: [], assumptions: [] } };
-  const context = {
-    intent: state.intent,
-    manual: state.manual.map((item) => item.content.slice(0, 800)),
-    web: state.web.map((item) => ({ title: item.title, url: item.url, snippet: item.snippet.slice(0, 500) })),
-    products: structuredJsonSupported ? state.products.filter((product) => (product.rank ?? 999) <= 3 || (product.cheapRank ?? 999) <= 1).map(({ id, name, category, price, specifications }) => ({ id, name, category, price, specifications: JSON.stringify(specifications).slice(0, 180) })) : [],
-  };
-  const history = state.history.slice(-6).map((message) => ({ ...message, content: message.content.slice(0, 900) }));
-  try {
-    const messages = [
-      { role: "system", content: `You are NexRig's PC build planner. Products and prices in DATABASE CANDIDATES are the only allowed catalog facts. Never invent an ID, product, price, benchmark, compatibility claim, or web source. Select at most one product per category and remain within budget. For revision requests, preserve the previous goal and budget while changing what the user requested. Prefer CPU, Motherboard, Ram, Graphics Card, SSD, Power Supply and Casing. The UI renders validated product cards, so do not repeat the full product list, IDs, or prices in answer. The answer must be concise Markdown with headings: "## Recommendation", "## Why this works", and "## Trade-offs". Explain the requested change and clearly label uncertainty.` },
-      ...history,
-      { role: "user", content: `QUESTION: ${state.question}\nCONTEXT: ${JSON.stringify(context)}` },
-    ] as Array<{ role: "system" | "user" | "assistant"; content: string }>;
-    if (!structuredJsonSupported) return { draft: { answer: await chat(messages), productIds: [], assumptions: [] } };
-    const output = await chatJson(messages, "pc_build_recommendation", buildJsonSchema);
-    return { draft: parseModelBuild(output) };
-  } catch (error) {
-    console.error("Hugging Face build generation failed", error);
-    return { draft: { answer: "Server busy now! Try again later.", productIds: [], assumptions: ["AI_UNAVAILABLE"] } };
-  }
+  // Product selection is performed deterministically after retrieval. The LLM
+  // writes the explanation only after those exact database products pass the
+  // budget and compatibility checks, preventing prose/product mismatches.
+  return { draft: { answer: "", productIds: [], assumptions: [] } };
 }
 
-function validate(state: typeof AiState.State) {
+async function validate(state: typeof AiState.State) {
   const budget = state.intent?.budget ?? null;
   if (state.draft?.assumptions.includes("AI_UNAVAILABLE")) return { response: { answer: "Server busy now! Try again later.", build: [], total: 0, budget, sources: [], guardrails: { passed: false, checks: ["AI availability checked"], warnings: [] } } };
   if (state.intent?.requestType === "product_question") {
     const allowed = new Map(state.products.map((product) => [product.id, product]));
     let selected = [...new Set(state.draft?.productIds ?? [])].map((id) => allowed.get(id)).filter(Boolean) as ProductCandidate[];
     if (!selected.length) selected = state.products.slice(0, 8);
-    return { response: { answer: state.draft?.answer ?? "Here are matching database products.", build: selected.map((product) => ({ ...product, reason: "Matched from the active PostgreSQL catalog." })), total: 0, budget: null, sources: [], guardrails: { passed: true, checks: ["All displayed products exist in PostgreSQL", "Prices copied from PostgreSQL"], warnings: [] } } };
+    return { response: { answer: state.draft?.answer ?? "Here are matching database products.", build: selected.map((product) => ({ ...product, reason: "Matched from the active PostgreSQL catalog." })), total: 0, budget, sources: [], guardrails: { passed: true, checks: ["All displayed products exist in PostgreSQL", "Prices copied from PostgreSQL", ...(budget ? ["Every displayed product is within the requested component budget"] : [])], warnings: [] } } };
   }
   if (!budget) return { response: { answer: state.draft!.answer, build: [], total: 0, budget, sources: [], guardrails: { passed: true, checks: ["Budget clarification requested"], warnings: [] } } };
   const allowed = new Map(state.products.map((product) => [product.id, product]));
@@ -226,7 +211,22 @@ function validate(state: typeof AiState.State) {
     ...(performanceWorkload && !editingGpuSuitable(gpu) ? ["No modern graphics card with at least 6 GB VRAM was available inside the retrieved budget range."] : []),
     "Exact CPU socket/BIOS support, physical clearance and PSU connectors still require structured specification verification before purchase.",
   ];
-  const answer = passed ? `${state.draft?.answer ?? "Here is a database-backed build."}\n\nValidated catalog total: ৳${total.toLocaleString("en-BD")}.` : `I could not create a complete database-backed build within ৳${budget.toLocaleString("en-BD")}. Try increasing the budget or tell me which parts you already own.`;
+  let answer = `I could not create a complete database-backed build within ৳${budget.toLocaleString("en-BD")}. Try increasing the budget or tell me which parts you already own.`;
+  if (passed) {
+    try {
+      const exactProducts = selected.map(({ name, category, price }) => ({ category, name, price }));
+      answer = await chat([
+        { role: "system", content: `You are Nexa, a helpful PC-building expert. Write a natural, concise answer using ONLY the exact validated products and prices supplied below. Do not mention or compare against any hardware model outside that list. Do not change names, prices, total, workload or budget. Do not write a total because the application adds the validated total. Use Markdown headings "## Recommendation", "## Why this works", and "## Trade-offs". The product cards appear below your message, so summarize the balance instead of repeating a separate invented build.` },
+        ...state.history.slice(-4).map((message) => ({ ...message, content: message.content.slice(0, 600) })),
+        { role: "user", content: `CURRENT REQUEST: ${state.question}\nINTERPRETED GOAL: ${state.intent?.goal}\nBUDGET: ৳${budget}\nEXACT DATABASE PRODUCTS: ${JSON.stringify(exactProducts)}` },
+      ]);
+      const cleanedAnswer = answer.replace(/^.*\btotal\b.*৳\s*\.?\s*$/gim, "").replace(/\n{3,}/g, "\n\n").trim();
+      answer = `${cleanedAnswer}\n\n**Validated catalog total:** ৳${total.toLocaleString("en-BD")}.`;
+    } catch (error) {
+      console.error("Hugging Face grounded explanation failed", error);
+      return { response: { answer: "Server busy now! Try again later.", build: [], total: 0, budget, sources: [], guardrails: { passed: false, checks: ["AI availability checked"], warnings: [] } } };
+    }
+  }
   return { response: {
     answer, build: passed ? build : [], total: passed ? total : 0, budget,
     sources: [...state.manual.map((item) => ({ title: item.source })), ...state.web.map((item) => ({ title: item.title, url: item.url }))],

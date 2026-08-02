@@ -62,6 +62,20 @@ const cases: Case[] = [
     check: (result) => [...(!result.build.length ? ["no catalog matches"] : []), ...result.build.filter((item) => !/ryzen|amd/i.test(item.name)).map((item) => `irrelevant match: ${item.name}`), ...grounded(result)],
   },
   {
+    name: "Budgeted graphics-card lookup",
+    question: "Suggest me graphics card under 20000 taka",
+    check: (result) => [...(!result.build.length ? ["no graphics-card matches"] : []), ...result.build.filter((item) => item.category.toLowerCase() !== "graphics card").map((item) => `wrong category: ${item.category}`), ...result.build.filter((item) => item.price > 20_000).map((item) => `over budget: ${item.name}`), ...grounded(result)],
+  },
+  {
+    name: "Budget-only product follow-up",
+    question: "100000 taka then",
+    history: [
+      { role: "user", content: "Suggest me graphics card under 20000 taka" },
+      { role: "assistant", content: "I could not find a graphics card in that range." },
+    ],
+    check: (result) => [...(!result.build.length ? ["no graphics-card matches"] : []), ...result.build.filter((item) => item.category.toLowerCase() !== "graphics card").map((item) => `lost product intent: ${item.category}`), ...result.build.filter((item) => item.price > 100_000).map((item) => `over revised budget: ${item.name}`)],
+  },
+  {
     name: "Impossible low budget",
     question: "Build a complete gaming PC under 20000 BDT",
     check: (result) => [...(result.guardrails.passed && result.build.length ? ["claimed a complete valid build at an unrealistic budget"] : []), ...(result.total > 20_000 ? ["returned an over-budget total"] : [])],
@@ -77,7 +91,7 @@ for (const testCase of activeCases) {
     const result = await runPcBuilder(testCase.question, testCase.history ?? []);
     const issues = testCase.check(result);
     failures += issues.length ? 1 : 0;
-    console.log(JSON.stringify({ case: testCase.name, passed: !issues.length, issues, ms: Date.now() - started, budget: result.budget, total: result.total, products: result.build.map((item) => `${item.category}: ${item.name}`), warnings: result.guardrails.warnings }, null, 2));
+    console.log(JSON.stringify({ case: testCase.name, passed: !issues.length, issues, ms: Date.now() - started, budget: result.budget, total: result.total, answer: result.answer, products: result.build.map((item) => `${item.category}: ${item.name}`), warnings: result.guardrails.warnings }, null, 2));
   } catch (error) {
     failures++;
     console.log(JSON.stringify({ case: testCase.name, passed: false, issues: [error instanceof Error ? error.message : String(error)], ms: Date.now() - started }, null, 2));

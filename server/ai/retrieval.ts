@@ -76,20 +76,21 @@ export async function retrieveProducts(budget: number): Promise<ProductCandidate
   return result.rows as ProductCandidate[];
 }
 
-export async function searchCatalog(query: string, limit = 12): Promise<ProductCandidate[]> {
-  const stopWords = new Set(["what", "price", "cost", "of", "a", "an", "the", "show", "me", "find", "available", "availability", "product", "products", "processor", "processors", "component", "components"]);
-  const terms = query.toLowerCase().split(/\W+/).filter((term) => term.length > 1 && !stopWords.has(term)).slice(0, 6);
+export async function searchCatalog(query: string, limit = 12, maximumPrice?: number | null): Promise<ProductCandidate[]> {
+  const stopWords = new Set(["what", "price", "cost", "of", "a", "an", "the", "show", "suggest", "recommend", "me", "find", "available", "availability", "product", "products", "processor", "processors", "component", "components", "under", "within", "budget", "taka", "bdt", "tk", "follow", "up", "request", "then", "instead", "please", "pls"]);
+  const terms = query.toLowerCase().split(/\W+/).filter((term) => term.length > 1 && !/^\d+$/.test(term) && !stopWords.has(term)).slice(0, 6);
   const values: unknown[] = [];
   const filters = terms.map((term) => { values.push(`%${term}%`); return `(p.name ILIKE $${values.length} OR p.description ILIKE $${values.length} OR p.specifications::text ILIKE $${values.length})`; });
   const categoryHint = /\b(cpu|processor|processors)\b/i.test(query) ? "cpu" : /\b(gpu|graphics card)\b/i.test(query) ? "graphics card" : /\b(ram|memory)\b/i.test(query) ? "ram" : /\b(ssd|storage)\b/i.test(query) ? "ssd" : /\bmotherboard\b/i.test(query) ? "motherboard" : null;
   if (categoryHint) { values.push(categoryHint); filters.push(`LOWER(c.name) = $${values.length}`); }
+  if (maximumPrice) { values.push(maximumPrice); filters.push(`p.price_bdt <= $${values.length}`); }
   values.push(limit);
   const result = await pool.query(
     `SELECT p.id::text, p.name, c.name AS category, p.price_bdt AS price,
             p.description, p.specifications, p.image_url AS "imageUrl", p.source_product_url AS "sourceUrl"
      FROM products p JOIN categories c ON c.id = p.category_id
      WHERE p.is_active = TRUE ${filters.length ? `AND ${filters.join(" AND ")}` : ""}
-     ORDER BY p.price_bdt ASC LIMIT $${values.length}`,
+     ORDER BY p.price_bdt ${maximumPrice ? "DESC" : "ASC"} LIMIT $${values.length}`,
     values,
   );
   return result.rows as ProductCandidate[];
