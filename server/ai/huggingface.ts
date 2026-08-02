@@ -1,9 +1,11 @@
 import { InferenceClient } from "@huggingface/inference";
 
-const token = process.env.HF_TOKEN;
-if (!token) throw new Error("HF_TOKEN is required for the AI service");
-
-const client = new InferenceClient(token);
+let client: InferenceClient | undefined;
+function getClient() {
+  const token = process.env.HF_TOKEN;
+  if (!token) throw new Error("HF_TOKEN is required for the AI service");
+  return client ??= new InferenceClient(token);
+}
 export const chatModel = process.env.HF_CHAT_MODEL ?? "openai/gpt-oss-120b:fastest";
 export const embeddingModel = process.env.HF_EMBEDDING_MODEL ?? "sentence-transformers/all-MiniLM-L6-v2";
 export const structuredJsonSupported = !/llama-3\.1-8b-instruct/i.test(chatModel);
@@ -12,7 +14,7 @@ export async function chat(messages: Array<{ role: "system" | "user" | "assistan
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await client.chatCompletion({ model: chatModel, provider: "auto", messages, max_tokens: 350, temperature: 0.2 });
+      const result = await getClient().chatCompletion({ model: chatModel, provider: "auto", messages, max_tokens: 350, temperature: 0.2 });
       const content = result.choices[0]?.message?.content?.trim();
       if (content) return content;
       lastError = new Error("Hugging Face returned an empty message");
@@ -30,7 +32,7 @@ export async function chatJson(messages: Array<{ role: "system" | "user" | "assi
   ];
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await client.chatCompletion({
+      const result = await getClient().chatCompletion({
         model: chatModel, provider: "auto", messages: efficientMessages, max_tokens: 650, temperature: 0.1, reasoning_effort: "low",
         response_format: strictSchemaSupported ? { type: "json_schema", json_schema: { name, strict: true, schema } } : { type: "json_object" },
       });
@@ -43,7 +45,7 @@ export async function chatJson(messages: Array<{ role: "system" | "user" | "assi
 }
 
 export async function embed(text: string): Promise<number[]> {
-  const output = await client.featureExtraction({ model: embeddingModel, provider: "hf-inference", inputs: text });
+  const output = await getClient().featureExtraction({ model: embeddingModel, provider: "hf-inference", inputs: text });
   if (!Array.isArray(output)) throw new Error("Hugging Face returned an invalid embedding");
   if (typeof output[0] === "number") return output as number[];
   const rows = output as number[][];

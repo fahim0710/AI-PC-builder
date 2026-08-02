@@ -7,7 +7,7 @@ import { z } from "zod";
 import { pool } from "./db/pool.js";
 import { type AuthenticatedRequest, requireAdmin, requireAuth } from "./auth.js";
 import { runPcBuilder } from "./ai/graph.js";
-import { stripe } from "./payments/stripe.js";
+import { getStripe } from "./payments/stripe.js";
 import { stripeWebhook } from "./payments/stripe-webhook.js";
 
 export const app = express();
@@ -243,7 +243,7 @@ app.post("/api/checkout/session", requireAuth, async (request: AuthenticatedRequ
        FROM orders WHERE user_id = $1 AND idempotency_key = $2`, [userId, idempotencyKey],
     );
     if (existing.rows[0]?.stripeSessionId) {
-      const savedSession = await stripe.checkout.sessions.retrieve(existing.rows[0].stripeSessionId);
+      const savedSession = await getStripe().checkout.sessions.retrieve(existing.rows[0].stripeSessionId);
       if (!savedSession.url) return response.status(409).json({ error: "This checkout session is no longer available", orderId: existing.rows[0].orderId });
       return response.json({ orderId: existing.rows[0].orderId, checkoutUrl: savedSession.url });
     }
@@ -286,7 +286,7 @@ app.post("/api/checkout/session", requireAuth, async (request: AuthenticatedRequ
     );
     const user = await client.query<{ email: string | null }>("SELECT email FROM users WHERE id = $1", [userId]);
     const appUrl = process.env.APP_URL ?? process.env.WEB_ORIGIN ?? "http://localhost:5173";
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       customer_email: user.rows[0]?.email ?? undefined,
@@ -329,7 +329,7 @@ app.get("/api/orders/by-session/:sessionId", requireAuth, async (request: Authen
     if (!order.rowCount) return response.status(404).json({ error: "Order not found" });
     let currentOrder = order.rows[0];
     if (currentOrder.paymentStatus !== "paid") {
-      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      const session = await getStripe().checkout.sessions.retrieve(sessionId);
       if (session.payment_status === "paid") {
         if (session.currency !== currentOrder.currency || session.amount_total !== Number(currentOrder.totalMinor)) {
           return response.status(409).json({ error: "Stripe payment does not match the saved order" });

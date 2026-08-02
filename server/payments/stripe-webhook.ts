@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import type Stripe from "stripe";
 import { pool } from "../db/pool.js";
-import { stripe } from "./stripe.js";
+import { getStripe } from "./stripe.js";
 
 const paymentIntentId = (session: Stripe.Checkout.Session) =>
   typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
@@ -13,7 +13,7 @@ export async function stripeWebhook(request: Request, response: Response) {
 
   let event: Stripe.Event;
   try {
-    event = stripe.webhooks.constructEvent(request.body, signature, secret);
+    event = getStripe().webhooks.constructEvent(request.body, signature, secret);
   } catch (error) {
     console.error("Stripe webhook signature verification failed", error instanceof Error ? error.message : error);
     return response.status(400).send("Invalid Stripe signature");
@@ -77,4 +77,3 @@ export async function stripeWebhook(request: Request, response: Response) {
     client.release();
   }
 }
-
