@@ -12,8 +12,13 @@ import { stripeWebhook } from "./payments/stripe-webhook.js";
 
 export const app = express();
 const port = Number(process.env.PORT ?? 4000);
+const vercelHost = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
+const deploymentOrigin = vercelHost ? `https://${vercelHost}` : undefined;
+const webOrigin = process.env.VERCEL
+  ? deploymentOrigin ?? process.env.WEB_ORIGIN
+  : process.env.WEB_ORIGIN ?? "http://127.0.0.1:5173";
 
-app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:5173" }));
+app.use(cors({ origin: webOrigin }));
 app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhook);
 app.use(express.json());
 
@@ -285,7 +290,10 @@ app.post("/api/checkout/session", requireAuth, async (request: AuthenticatedRequ
        WHERE o.public_id = $1 AND o.user_id = $2 ORDER BY oi.id`, [publicId, userId],
     );
     const user = await client.query<{ email: string | null }>("SELECT email FROM users WHERE id = $1", [userId]);
-    const appUrl = process.env.APP_URL ?? process.env.WEB_ORIGIN ?? "http://localhost:5173";
+    const appUrl = process.env.VERCEL
+      ? deploymentOrigin ?? process.env.APP_URL ?? process.env.WEB_ORIGIN
+      : process.env.APP_URL ?? process.env.WEB_ORIGIN ?? "http://localhost:5173";
+    if (!appUrl) throw new Error("APP_URL is required for Stripe Checkout");
     const session = await getStripe().checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
