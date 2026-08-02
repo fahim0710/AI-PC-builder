@@ -35,7 +35,7 @@
     "react": "latest",
     "react-dom": "latest",
     "stripe": "^22.4.0",
-    "typescript": "latest",
+    "typescript": "5.9.3",
     "vite": "latest",
     "zod": "latest"
   },
