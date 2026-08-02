@@ -88,9 +88,16 @@ CREATE TABLE IF NOT EXISTS orders (
   stripe_checkout_session_id TEXT UNIQUE,
   stripe_payment_intent_id TEXT UNIQUE,
   idempotency_key UUID NOT NULL UNIQUE,
+  customer_name TEXT NOT NULL DEFAULT '',
+  customer_phone VARCHAR(32) NOT NULL DEFAULT '',
+  delivery_address TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_name TEXT NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS customer_phone VARCHAR(32) NOT NULL DEFAULT '';
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_address TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS order_items (
   id BIGSERIAL PRIMARY KEY,
@@ -107,6 +114,12 @@ CREATE TABLE IF NOT EXISTS order_items (
 CREATE INDEX IF NOT EXISTS cart_items_cart_id_idx ON cart_items(cart_id);
 CREATE INDEX IF NOT EXISTS orders_user_id_idx ON orders(user_id);
 CREATE INDEX IF NOT EXISTS order_items_order_id_idx ON order_items(order_id);
+
+CREATE TABLE IF NOT EXISTS stripe_webhook_events (
+  stripe_event_id TEXT PRIMARY KEY,
+  event_type TEXT NOT NULL,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 CREATE TABLE IF NOT EXISTS knowledge_documents (
   id BIGSERIAL PRIMARY KEY,

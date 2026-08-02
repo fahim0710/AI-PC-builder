@@ -6,12 +6,13 @@ if (!token) throw new Error("HF_TOKEN is required for the AI service");
 const client = new InferenceClient(token);
 export const chatModel = process.env.HF_CHAT_MODEL ?? "openai/gpt-oss-120b:fastest";
 export const embeddingModel = process.env.HF_EMBEDDING_MODEL ?? "sentence-transformers/all-MiniLM-L6-v2";
+export const structuredJsonSupported = !/llama-3\.1-8b-instruct/i.test(chatModel);
 
 export async function chat(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>) {
   let lastError: unknown;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      const result = await client.chatCompletion({ model: chatModel, provider: "auto", messages, max_tokens: 1000, temperature: 0.2 });
+      const result = await client.chatCompletion({ model: chatModel, provider: "auto", messages, max_tokens: 350, temperature: 0.2 });
       const content = result.choices[0]?.message?.content?.trim();
       if (content) return content;
       lastError = new Error("Hugging Face returned an empty message");
@@ -22,11 +23,16 @@ export async function chat(messages: Array<{ role: "system" | "user" | "assistan
 
 export async function chatJson(messages: Array<{ role: "system" | "user" | "assistant"; content: string }>, name: string, schema: Record<string, unknown>) {
   let lastError: unknown;
+  const strictSchemaSupported = structuredJsonSupported;
+  const efficientMessages = strictSchemaSupported ? messages : [
+    { role: "system" as const, content: `Return one JSON object only. It must match this schema: ${JSON.stringify(schema)}` },
+    ...messages,
+  ];
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const result = await client.chatCompletion({
-        model: chatModel, provider: "auto", messages, max_tokens: 1200, temperature: 0.1, reasoning_effort: "low",
-        response_format: { type: "json_schema", json_schema: { name, strict: true, schema } },
+        model: chatModel, provider: "auto", messages: efficientMessages, max_tokens: 650, temperature: 0.1, reasoning_effort: "low",
+        response_format: strictSchemaSupported ? { type: "json_schema", json_schema: { name, strict: true, schema } } : { type: "json_object" },
       });
       const content = result.choices[0]?.message?.content?.trim();
       if (content) return content;

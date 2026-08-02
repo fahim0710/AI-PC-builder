@@ -4,6 +4,7 @@ import { embed } from "./huggingface.js";
 export type ProductCandidate = {
   id: string; name: string; category: string; price: number; description: string;
   specifications: unknown; imageUrl: string | null; sourceUrl: string;
+  rank?: number; cheapRank?: number;
 };
 
 const cosine = (left: number[], right: number[]) => {
@@ -40,35 +41,48 @@ export async function retrieveProducts(budget: number): Promise<ProductCandidate
                   (CASE WHEN p.name ILIKE '%DDR5%' THEN 'ddr5' WHEN p.name ILIKE '%DDR4%' THEN 'ddr4' ELSE 'other' END) || '-' ||
                   (CASE WHEN p.name ~* '(32[[:space:]]*GB|2[[:space:]]*[xX][[:space:]]*16)' THEN '32gb' WHEN p.name ~* '(16[[:space:]]*GB|2[[:space:]]*[xX][[:space:]]*8)' THEN '16gb' ELSE 'other' END)
                 WHEN LOWER(c.name) = 'cpu' THEN CASE WHEN p.name ~* '(amd|ryzen)' THEN 'amd' WHEN p.name ~* 'intel' THEN 'intel' ELSE 'other' END
-                WHEN LOWER(c.name) = 'motherboard' THEN CASE WHEN p.name ~* '(amd|am4|am5|a320|a520|a620|b450|b550|b650|x570|x670)' THEN 'amd' WHEN p.name ~* '(intel|h510|h610|h710|b560|b660|b760|z590|z690|z790)' THEN 'intel' ELSE 'other' END
+                WHEN LOWER(c.name) = 'motherboard' THEN CASE
+                  WHEN p.name ~* '(am5|a620|b650|b840|x670|x870)' THEN 'amd-am5'
+                  WHEN p.name ~* '(am4|a320|a520|b350|b450|b550|x370|x470|x570)' THEN 'amd-am4'
+                  WHEN p.name ~* '(lga1700|h610|h670|h710|h770|b660|b760|z690|z790)' THEN 'intel-lga1700'
+                  WHEN p.name ~* '(lga1200|h410|h470|h510|h570|b460|b560|z490|z590)' THEN 'intel-lga1200'
+                  WHEN p.name ~* '(intel|h61|h81|h110|h170|h270|h310|b150|b250|b360|z170|z270|z370|z390|lga1151)' THEN 'intel-legacy'
+                  ELSE 'other' END
                 ELSE 'all' END
               ORDER BY ABS(p.price_bdt - CASE LOWER(c.name)
                 WHEN 'cpu' THEN $1 * 0.18 WHEN 'motherboard' THEN $1 * 0.13
                 WHEN 'ram' THEN $1 * 0.08 WHEN 'graphics card' THEN $1 * 0.38
                 WHEN 'ssd' THEN $1 * 0.08 WHEN 'power supply' THEN $1 * 0.07
                 WHEN 'casing' THEN $1 * 0.06 ELSE $1 * 0.04 END)) AS rank
+              , ROW_NUMBER() OVER (PARTITION BY c.name, CASE
+                  WHEN LOWER(c.name) = 'graphics card' AND p.name ~* '(RTX|Radeon[[:space:]]+RX|Intel[[:space:]]+Arc).*(6GB|8GB|12GB|16GB)' THEN 'workstation-gpu'
+                  ELSE 'general' END ORDER BY p.price_bdt ASC) AS "cheapRank"
        FROM products p JOIN categories c ON c.id = p.category_id
        WHERE p.is_active = TRUE AND (
          (LOWER(c.name) = 'cpu' AND p.price_bdt <= $1 * 0.23) OR
          (LOWER(c.name) = 'motherboard' AND p.price_bdt <= $1 * 0.17) OR
-         (LOWER(c.name) = 'ram' AND p.price_bdt <= $1 * 0.16) OR
+         (LOWER(c.name) = 'ram' AND (p.price_bdt <= $1 * 0.16
+           OR (p.name ~* '(16[[:space:]]*GB|2[[:space:]]*[xX][[:space:]]*8)' AND p.price_bdt <= $1 * 0.25)
+           OR (p.name ~* '(32[[:space:]]*GB|2[[:space:]]*[xX][[:space:]]*16)' AND p.price_bdt <= $1 * 0.35))) OR
          (LOWER(c.name) = 'graphics card' AND p.price_bdt <= $1 * 0.48) OR
          (LOWER(c.name) = 'ssd' AND p.price_bdt <= $1 * 0.11) OR
          (LOWER(c.name) = 'power supply' AND p.price_bdt <= $1 * 0.10) OR
          (LOWER(c.name) = 'casing' AND p.price_bdt <= $1 * 0.09) OR
          (LOWER(c.name) = 'cpu cooler' AND p.price_bdt <= $1 * 0.06)
        )
-     ) SELECT * FROM ranked WHERE rank <= 4 ORDER BY category, price DESC`,
+     ) SELECT * FROM ranked WHERE rank <= 4 OR "cheapRank" <= 2 ORDER BY category, price DESC`,
     [budget],
   );
   return result.rows as ProductCandidate[];
 }
 
 export async function searchCatalog(query: string, limit = 12): Promise<ProductCandidate[]> {
-  const stopWords = new Set(["what", "price", "cost", "of", "a", "an", "the", "show", "me", "find", "product", "products"]);
+  const stopWords = new Set(["what", "price", "cost", "of", "a", "an", "the", "show", "me", "find", "available", "availability", "product", "products", "processor", "processors", "component", "components"]);
   const terms = query.toLowerCase().split(/\W+/).filter((term) => term.length > 1 && !stopWords.has(term)).slice(0, 6);
   const values: unknown[] = [];
   const filters = terms.map((term) => { values.push(`%${term}%`); return `(p.name ILIKE $${values.length} OR p.description ILIKE $${values.length} OR p.specifications::text ILIKE $${values.length})`; });
+  const categoryHint = /\b(cpu|processor|processors)\b/i.test(query) ? "cpu" : /\b(gpu|graphics card)\b/i.test(query) ? "graphics card" : /\b(ram|memory)\b/i.test(query) ? "ram" : /\b(ssd|storage)\b/i.test(query) ? "ssd" : /\bmotherboard\b/i.test(query) ? "motherboard" : null;
+  if (categoryHint) { values.push(categoryHint); filters.push(`LOWER(c.name) = $${values.length}`); }
   values.push(limit);
   const result = await pool.query(
     `SELECT p.id::text, p.name, c.name AS category, p.price_bdt AS price,

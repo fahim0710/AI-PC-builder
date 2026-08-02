@@ -13,7 +13,10 @@
     "db:down": "docker compose down",
     "db:import": "tsx server/scripts/import-ryans.ts",
     "db:migrate": "docker compose exec -T postgres psql -U nexrig -d nexrig -f /docker-entrypoint-initdb.d/001-schema.sql",
+    "db:migrate:remote": "tsx server/scripts/migrate.ts",
     "ai:ingest": "tsx server/scripts/ingest-manual.ts",
+    "ai:eval": "tsx server/scripts/evaluate-ai.ts",
+    "hf:verify": "tsx server/scripts/verify-hf.ts",
     "typecheck:server": "tsc -p tsconfig.server.json --noEmit"
   },
   "dependencies": {
@@ -31,6 +34,7 @@
     "pg": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "stripe": "^22.4.0",
     "typescript": "latest",
     "vite": "latest",
     "zod": "latest"

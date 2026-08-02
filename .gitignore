@@ -28,8 +28,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# Environment files. The sanitized template is intentionally committed.
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -46,3 +47,7 @@ next-env.d.ts
 /.scraper-profile/
 /scraped_data/
 /cpu-page.html
+*.log
+*.tsbuildinfo
+**/__pycache__/
+*.py[cod]

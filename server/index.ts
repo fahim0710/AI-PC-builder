@@ -2,15 +2,19 @@ import "dotenv/config";
 import cors from "cors";
 import express from "express";
 import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { pool } from "./db/pool.js";
 import { type AuthenticatedRequest, requireAdmin, requireAuth } from "./auth.js";
 import { runPcBuilder } from "./ai/graph.js";
+import { stripe } from "./payments/stripe.js";
+import { stripeWebhook } from "./payments/stripe-webhook.js";
 
-const app = express();
+export const app = express();
 const port = Number(process.env.PORT ?? 4000);
 
 app.use(cors({ origin: process.env.WEB_ORIGIN ?? "http://127.0.0.1:5173" }));
+app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), stripeWebhook);
 app.use(express.json());
 
 app.get("/api/health", async (_request, response, next) => {
@@ -76,7 +80,12 @@ const cartSchema = z.object({
   })).max(20).refine((items) => new Set(items.map((item) => item.productId)).size === items.length, "Duplicate products are not allowed"),
 });
 
-const checkoutSchema = z.object({ idempotencyKey: z.string().uuid() });
+const checkoutSchema = z.object({
+  idempotencyKey: z.string().uuid(),
+  customerName: z.string().trim().min(2).max(120),
+  phone: z.string().trim().regex(/^\+?[0-9][0-9\s-]{7,19}$/, "Enter a valid phone number"),
+  address: z.string().trim().min(10).max(500),
+});
 const aiChatSchema = z.object({ conversationId: z.string().uuid().optional(), message: z.string().trim().min(2).max(2000) });
 const guestAiSchema = z.object({ sessionId: z.string().uuid(), message: z.string().trim().min(2).max(2000) });
 const usedGuestSessions = new Map<string, number>();
@@ -224,52 +233,133 @@ app.delete("/api/cart/items/:productId", requireAuth, async (request: Authentica
   } catch (error) { return next(error); }
 });
 
-app.post("/api/checkout/prepare", requireAuth, async (request: AuthenticatedRequest, response, next) => {
+app.post("/api/checkout/session", requireAuth, async (request: AuthenticatedRequest, response, next) => {
   const client = await pool.connect();
   try {
-    const { idempotencyKey } = checkoutSchema.parse(request.body);
+    const { idempotencyKey, customerName, phone, address } = checkoutSchema.parse(request.body);
     const userId = await databaseUserId(request.authUser!.uid);
-    const existing = await client.query(
-      `SELECT public_id AS "orderId", status, payment_status AS "paymentStatus",
-              currency, total_minor AS "totalMinor"
+    const existing = await client.query<{ orderId: string; stripeSessionId: string | null }>(
+      `SELECT public_id AS "orderId", stripe_checkout_session_id AS "stripeSessionId"
        FROM orders WHERE user_id = $1 AND idempotency_key = $2`, [userId, idempotencyKey],
     );
-    if (existing.rowCount) return response.json({ order: existing.rows[0], stripeReady: true });
+    if (existing.rows[0]?.stripeSessionId) {
+      const savedSession = await stripe.checkout.sessions.retrieve(existing.rows[0].stripeSessionId);
+      if (!savedSession.url) return response.status(409).json({ error: "This checkout session is no longer available", orderId: existing.rows[0].orderId });
+      return response.json({ orderId: existing.rows[0].orderId, checkoutUrl: savedSession.url });
+    }
 
-    await client.query("BEGIN");
-    const items = await client.query(
-      `SELECT p.id, p.name, p.price_bdt, p.image_url, ci.quantity
-       FROM carts cart JOIN cart_items ci ON ci.cart_id = cart.id
-       JOIN products p ON p.id = ci.product_id
-       WHERE cart.user_id = $1 AND p.is_active = TRUE FOR UPDATE OF ci`, [userId],
-    );
-    if (!items.rowCount) {
-      await client.query("ROLLBACK");
-      return response.status(400).json({ error: "Your cart is empty" });
-    }
-    const subtotalMinor = items.rows.reduce((sum, item) => sum + item.price_bdt * 100 * item.quantity, 0);
-    const publicId = randomUUID();
-    const order = await client.query<{ id: string }>(
-      `INSERT INTO orders (public_id, user_id, currency, subtotal_minor, total_minor, idempotency_key)
-       VALUES ($1, $2, 'bdt', $3, $3, $4) RETURNING id`,
-      [publicId, userId, subtotalMinor, idempotencyKey],
-    );
-    for (const item of items.rows) {
-      const unitMinor = item.price_bdt * 100;
-      await client.query(
-        `INSERT INTO order_items (order_id, product_id, product_name, unit_amount_minor, quantity, line_total_minor, image_url)
-         VALUES ($1, $2, $3, $4, $5, $4 * $5, $6)`,
-        [order.rows[0].id, item.id, item.name, unitMinor, item.quantity, item.image_url],
+    let publicId = existing.rows[0]?.orderId;
+    if (!publicId) {
+      await client.query("BEGIN");
+      const cartItems = await client.query<{ id: string; name: string; price_bdt: number; image_url: string | null; quantity: number }>(
+        `SELECT p.id, p.name, p.price_bdt, p.image_url, ci.quantity
+         FROM carts cart JOIN cart_items ci ON ci.cart_id = cart.id
+         JOIN products p ON p.id = ci.product_id
+         WHERE cart.user_id = $1 AND p.is_active = TRUE FOR UPDATE OF ci`, [userId],
       );
+      if (!cartItems.rowCount) {
+        await client.query("ROLLBACK");
+        return response.status(400).json({ error: "Your cart is empty" });
+      }
+      const subtotalMinor = cartItems.rows.reduce((sum, item) => sum + item.price_bdt * 100 * item.quantity, 0);
+      publicId = randomUUID();
+      const order = await client.query<{ id: string }>(
+        `INSERT INTO orders (public_id, user_id, currency, subtotal_minor, total_minor, idempotency_key, customer_name, customer_phone, delivery_address)
+         VALUES ($1, $2, 'bdt', $3, $3, $4, $5, $6, $7) RETURNING id`,
+        [publicId, userId, subtotalMinor, idempotencyKey, customerName, phone, address],
+      );
+      for (const item of cartItems.rows) {
+        const unitMinor = item.price_bdt * 100;
+        await client.query(
+          `INSERT INTO order_items (order_id, product_id, product_name, unit_amount_minor, quantity, line_total_minor, image_url)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [order.rows[0].id, item.id, item.name, unitMinor, item.quantity, unitMinor * item.quantity, item.image_url],
+        );
+      }
+      await client.query("COMMIT");
     }
-    await client.query("COMMIT");
-    return response.status(201).json({
-      order: { orderId: publicId, status: "pending_payment", paymentStatus: "unpaid", currency: "bdt", totalMinor: subtotalMinor },
-      stripeReady: true,
-      message: "Order prepared. No payment has been charged.",
+
+    const orderItems = await client.query<{ product_name: string; unit_amount_minor: string; quantity: number; image_url: string | null }>(
+      `SELECT oi.product_name, oi.unit_amount_minor, oi.quantity, oi.image_url
+       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+       WHERE o.public_id = $1 AND o.user_id = $2 ORDER BY oi.id`, [publicId, userId],
+    );
+    const user = await client.query<{ email: string | null }>("SELECT email FROM users WHERE id = $1", [userId]);
+    const appUrl = process.env.APP_URL ?? process.env.WEB_ORIGIN ?? "http://localhost:5173";
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      customer_email: user.rows[0]?.email ?? undefined,
+      client_reference_id: publicId,
+      line_items: orderItems.rows.map((item) => ({
+        quantity: item.quantity,
+        price_data: {
+          currency: "bdt",
+          unit_amount: Number(item.unit_amount_minor),
+          product_data: { name: item.product_name, images: item.image_url?.startsWith("https://") ? [item.image_url] : undefined },
+        },
+      })),
+      metadata: { orderId: publicId, userId },
+      payment_intent_data: { metadata: { orderId: publicId } },
+      success_url: `${appUrl}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${appUrl}/?checkout=cancelled`,
+    }, { idempotencyKey });
+    if (!session.url) throw new Error("Stripe did not return a Checkout URL");
+    await client.query(
+      `UPDATE orders SET stripe_checkout_session_id = $1, payment_status = 'processing', updated_at = NOW()
+       WHERE public_id = $2 AND user_id = $3`, [session.id, publicId, userId],
+    );
+    return response.status(existing.rowCount ? 200 : 201).json({
+      orderId: publicId,
+      checkoutUrl: session.url,
     });
   } catch (error) { await client.query("ROLLBACK").catch(() => undefined); return next(error); }
   finally { client.release(); }
+});
+
+app.get("/api/orders/by-session/:sessionId", requireAuth, async (request: AuthenticatedRequest, response, next) => {
+  try {
+    const sessionId = z.string().regex(/^cs_(?:test|live)_[A-Za-z0-9]+$/).parse(request.params.sessionId);
+    const userId = await databaseUserId(request.authUser!.uid);
+    const order = await pool.query<{ id: string; orderId: string; status: string; paymentStatus: string; currency: string; totalMinor: string; createdAt: string }>(
+      `SELECT id, public_id AS "orderId", status, payment_status AS "paymentStatus", currency,
+              total_minor AS "totalMinor", created_at AS "createdAt"
+       FROM orders WHERE stripe_checkout_session_id = $1 AND user_id = $2`, [sessionId, userId],
+    );
+    if (!order.rowCount) return response.status(404).json({ error: "Order not found" });
+    let currentOrder = order.rows[0];
+    if (currentOrder.paymentStatus !== "paid") {
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      if (session.payment_status === "paid") {
+        if (session.currency !== currentOrder.currency || session.amount_total !== Number(currentOrder.totalMinor)) {
+          return response.status(409).json({ error: "Stripe payment does not match the saved order" });
+        }
+        const paymentIntentId = typeof session.payment_intent === "string" ? session.payment_intent : session.payment_intent?.id ?? null;
+        const client = await pool.connect();
+        try {
+          await client.query("BEGIN");
+          await client.query(
+            `UPDATE orders SET status = 'paid', payment_status = 'paid', stripe_payment_intent_id = $1, updated_at = NOW()
+             WHERE id = $2 AND user_id = $3`, [paymentIntentId, currentOrder.id, userId],
+          );
+          await client.query("DELETE FROM cart_items WHERE cart_id = (SELECT id FROM carts WHERE user_id = $1)", [userId]);
+          await client.query("COMMIT");
+          currentOrder = { ...currentOrder, status: "paid", paymentStatus: "paid" };
+        } catch (error) {
+          await client.query("ROLLBACK").catch(() => undefined);
+          throw error;
+        } finally { client.release(); }
+      }
+    }
+    const items = await pool.query(
+      `SELECT oi.product_name AS name, oi.unit_amount_minor AS "unitAmountMinor", oi.quantity,
+              oi.line_total_minor AS "lineTotalMinor", oi.image_url AS "imageUrl"
+       FROM order_items oi JOIN orders o ON o.id = oi.order_id
+       WHERE o.stripe_checkout_session_id = $1 AND o.user_id = $2 ORDER BY oi.id`, [sessionId, userId],
+    );
+    const { id: _internalId, ...safeOrder } = currentOrder;
+    return response.json({ order: { ...safeOrder, items: items.rows } });
+  } catch (error) { return next(error); }
 });
 
 app.get("/api/products", async (request, response, next) => {
@@ -356,10 +446,24 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
   if (error instanceof z.ZodError) {
     return response.status(400).json({ error: "Invalid request", details: error.issues });
   }
+  if (error && typeof error === "object" && "type" in error && typeof error.type === "string" && error.type.startsWith("Stripe")) {
+    console.error("Stripe request failed", error);
+    const message = "message" in error && typeof error.message === "string" ? error.message : "Stripe could not create the payment session";
+    return response.status(502).json({ error: message });
+  }
   console.error(error);
-  return response.status(500).json({ error: "Internal server error" });
+  const developmentMessage = process.env.NODE_ENV !== "production" && error instanceof Error ? error.message : "Internal server error";
+  return response.status(500).json({ error: developmentMessage });
 });
 
-app.listen(port, "127.0.0.1", () => {
-  console.log(`NexRig API listening at http://127.0.0.1:${port}`);
-});
+const isDirectExecution = process.argv[1]
+  ? import.meta.url === pathToFileURL(process.argv[1]).href
+  : false;
+
+if (!process.env.VERCEL && isDirectExecution) {
+  app.listen(port, "127.0.0.1", () => {
+    console.log(`NexRig API listening at http://127.0.0.1:${port}`);
+  });
+}
+
+export default app;

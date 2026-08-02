@@ -16,7 +16,11 @@ export function CartCheckout({ onClose, onRemoved }: { onClose: () => void; onRe
   const [items, setItems] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [orderId, setOrderId] = useState("");
+  const [redirecting, setRedirecting] = useState(false);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [customerName, setCustomerName] = useState(() => auth.currentUser?.displayName ?? "");
+  const [phone, setPhone] = useState("");
+  const [address, setAddress] = useState("");
   const total = useMemo(() => items.reduce((sum, item) => sum + item.price * item.quantity, 0), [items]);
 
   useEffect(() => {
@@ -31,13 +35,20 @@ export function CartCheckout({ onClose, onRemoved }: { onClose: () => void; onRe
     } catch (error) { setMessage(error instanceof Error ? error.message : "Could not remove item."); }
   };
 
-  const prepareCheckout = async () => {
-    setMessage("Preparing your order…");
+  const startCheckout = async () => {
+    if (customerName.trim().length < 2) { setMessage("Enter your full name."); return; }
+    if (!/^\+?[0-9][0-9\s-]{7,19}$/.test(phone.trim())) { setMessage("Enter a valid phone number."); return; }
+    if (address.trim().length < 10) { setMessage("Enter your complete delivery address."); return; }
+    setRedirecting(true);
+    setMessage("Creating your secure Stripe Checkout session…");
     try {
-      const data = await authenticatedFetch("/api/checkout/prepare", { method: "POST", body: JSON.stringify({ idempotencyKey: crypto.randomUUID() }) });
-      setOrderId(data.order.orderId);
-      setMessage("Order prepared. No payment was charged—Stripe will be connected in the next phase.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Checkout could not be prepared."); }
+      const data = await authenticatedFetch("/api/checkout/session", { method: "POST", body: JSON.stringify({ idempotencyKey, customerName, phone, address }) });
+      if (!data.checkoutUrl) throw new Error("Stripe Checkout URL was unavailable.");
+      window.location.assign(data.checkoutUrl);
+    } catch (error) {
+      setRedirecting(false);
+      setMessage(error instanceof Error ? error.message : "Checkout could not be started.");
+    }
   };
 
   return <div className="modal-backdrop cart-backdrop" onMouseDown={onClose}><section className="cart-modal" role="dialog" aria-modal="true" aria-label="Review cart" onMouseDown={(e) => e.stopPropagation()}>
@@ -48,9 +59,10 @@ export function CartCheckout({ onClose, onRemoved }: { onClose: () => void; onRe
         <div><small>{item.category}</small><strong>{item.name}</strong><span>Quantity {item.quantity}</span></div>
         <b>৳{(item.price * item.quantity).toLocaleString("en-BD")}</b><button onClick={() => void remove(item)}>Remove</button>
       </article>)}</div>
-      <aside className="checkout-card"><span>ORDER SUMMARY</span><div><span>Components</span><b>{items.length}</b></div><div><span>Subtotal</span><b>৳{total.toLocaleString("en-BD")}</b></div><div><span>Delivery</span><b>Calculated later</b></div><div className="checkout-total"><span>Total</span><strong>৳{total.toLocaleString("en-BD")}</strong></div>
-        <button className="checkout" disabled={!items.length || Boolean(orderId)} onClick={() => void prepareCheckout()}>{orderId ? "Order prepared" : "Prepare secure checkout"}<span>→</span></button>
-        <small>Stripe is not connected yet. This creates an unpaid order only.</small>{orderId && <code>Order {orderId}</code>}{message && <p className="cart-message" role="status">{message}</p>}
+      <aside className="checkout-card"><span>ORDER SUMMARY</span><div><span>Components</span><b>{items.length}</b></div><div><span>Subtotal</span><b>৳{total.toLocaleString("en-BD")}</b></div><div><span>Delivery</span><b>Free · ৳0</b></div><div className="checkout-total"><span>Total</span><strong>৳{total.toLocaleString("en-BD")}</strong></div>
+        <div className="delivery-fields"><label>Full name<input value={customerName} onChange={(event) => setCustomerName(event.target.value)} autoComplete="name" maxLength={120} required placeholder="Your full name" /></label><label>Phone number<input value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" inputMode="tel" maxLength={21} required placeholder="01XXXXXXXXX" /></label><label>Delivery address<textarea value={address} onChange={(event) => setAddress(event.target.value)} autoComplete="street-address" maxLength={500} required placeholder="House, road, area, city" /></label></div>
+        <button className="checkout" disabled={!items.length || redirecting} onClick={() => void startCheckout()}>{redirecting ? "Redirecting to Stripe…" : "Pay securely with Stripe"}<span>→</span></button>
+        <small>Payment details are collected securely on Stripe’s hosted checkout page.</small>{message && <p className="cart-message" role="status">{message}</p>}
       </aside>
     </div>}
   </section></div>;

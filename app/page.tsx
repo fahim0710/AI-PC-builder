@@ -38,6 +38,7 @@ export default function Home() {
   const [cartOpen, setCartOpen] = useState(false);
   const [cartError, setCartError] = useState("");
   const [aiOpen, setAiOpen] = useState(false);
+  const [checkoutNotice, setCheckoutNotice] = useState<{ kind: "success" | "pending" | "cancelled" | "error"; text: string; orderId?: string } | null>(null);
   const [guestAiUsed, setGuestAiUsed] = useState(false);
   const [guestAiSession] = useState(() => crypto.randomUUID());
   const total = useMemo(() => Object.values(selected).reduce((sum, item) => sum + (item?.price ?? 0), 0), [selected]);
@@ -54,6 +55,36 @@ export default function Home() {
       setRole(data.user.role);
     }
   }), []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (checkout === "cancelled") {
+      setCheckoutNotice({ kind: "cancelled", text: "Checkout was cancelled. Your cart is still available." });
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+    const sessionId = params.get("session_id");
+    if (checkout !== "success" || !sessionId || !user) return;
+    let active = true;
+    const verify = async () => {
+      try {
+        const token = await user.getIdToken();
+        const response = await fetch(`/api/orders/by-session/${encodeURIComponent(sessionId)}`, { headers: { Authorization: `Bearer ${token}` } });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error ?? "Could not verify the order.");
+        if (!active) return;
+        const paid = data.order.paymentStatus === "paid";
+        setCheckoutNotice({ kind: paid ? "success" : "pending", text: paid ? "Payment confirmed. Your PC order has been placed." : "Stripe received your checkout. Payment confirmation is still processing; refresh shortly.", orderId: data.order.orderId });
+      } catch (error) {
+        if (active) setCheckoutNotice({ kind: "error", text: error instanceof Error ? error.message : "Could not verify the order." });
+      } finally {
+        window.history.replaceState({}, "", window.location.pathname);
+      }
+    };
+    void verify();
+    return () => { active = false; };
+  }, [user]);
 
   useEffect(() => {
     if (!active || products[active]) return;
@@ -103,9 +134,10 @@ export default function Home() {
 
   return (
     <main>
+      {checkoutNotice && <div className={`checkout-notice ${checkoutNotice.kind}`} role="status"><div><b>{checkoutNotice.kind === "success" ? "Payment successful" : checkoutNotice.kind === "pending" ? "Payment processing" : checkoutNotice.kind === "cancelled" ? "Checkout cancelled" : "Checkout status unavailable"}</b><span>{checkoutNotice.text}</span>{checkoutNotice.orderId && <code>Order {checkoutNotice.orderId}</code>}</div><button aria-label="Dismiss checkout message" onClick={() => setCheckoutNotice(null)}>×</button></div>}
       <header className="topbar">
         <a className="brand" href="#"><span className="brand-mark">N</span><span>NEXRIG</span></a>
-        <nav aria-label="Main navigation"><a href="#builder">Builder</a><a href="#how">How it works</a><a href="#data">Data source</a></nav>
+        <nav aria-label="Main navigation"><a href="#builder">Builder</a><a href="#about">About us</a><a href="https://www.ryans.com/pc-builder" target="_blank" rel="noreferrer">Data source ↗</a></nav>
         {user
           ? <div className="account"><span className="avatar">{(user.displayName ?? user.email ?? "U")[0].toUpperCase()}</span><span>{user.displayName ?? user.email}</span>{role === "admin" && <button className="admin-entry" onClick={() => setAdminOpen(true)}>Manage products</button>}<button className="ghost" onClick={() => signOut(auth)}>Sign out</button></div>
           : <button className="ghost" onClick={() => setAuthOpen(true)}>Sign in</button>}
@@ -150,7 +182,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="how" id="how"><div><div className="step">HOW IT WORKS</div><h2>From idea to checkout,<br />with confidence.</h2></div><div className="how-grid"><article><b>01</b><h3>Tell us your goal</h3><p>Gaming, editing, study—or a little of everything.</p></article><article><b>02</b><h3>Build with guardrails</h3><p>We flag incompatible choices before they become expensive mistakes.</p></article><article><b>03</b><h3>Buy when ready</h3><p>Review live pricing, stock, and every selected specification.</p></article></div></section>
+      <section className="how" id="about"><div><div className="step">ABOUT US</div><h2>From idea to checkout,<br />with confidence.</h2><p>NexRig helps people in Bangladesh plan a complete PC using real catalog products, clear pricing, and practical component guidance.</p></div><div className="how-grid"><article><b>01</b><h3>Tell us your goal</h3><p>Gaming, editing, study—or a little of everything.</p></article><article><b>02</b><h3>Build with all computer components</h3><p>Choose every essential component for a complete PC in one place.</p></article><article><b>03</b><h3>Buy when ready</h3><p>Review live pricing, stock, and every selected specification.</p></article></div></section>
 
       <section className="data-note" id="data"><span>LIVE DATA, CLEARLY SOURCED</span><p>Initial catalog information is collected from public Ryans Computers component pages. Prices can change without notice; verify them at the source before purchase.</p><a href="https://www.ryans.com/pc-builder" target="_blank" rel="noreferrer">View source ↗</a></section>
 

@@ -9,6 +9,10 @@ if (!process.env.DATABASE_URL) {
 
 export const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 10,
+  // Serverless instances can multiply connection pools quickly. Keep the pool
+  // deliberately small in production and use a pooled provider URL on Vercel.
+  max: process.env.VERCEL ? 3 : 10,
   idleTimeoutMillis: 30_000,
+  connectionTimeoutMillis: 10_000,
+  allowExitOnIdle: true,
 });
